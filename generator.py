@@ -22,7 +22,7 @@ PERSONAS = {
         ② その根拠（なぜそれが問題か）
         ③ 改善提案（実行可能な具体策）
 
-        簡潔に、日本語で回答してください。
+        回答全体を必ず300字以内に収め、簡潔に日本語で回答してください。
     """,
     "chatgpt": """
         あなたは実装・構造思考が得意なAIです。
@@ -34,6 +34,13 @@ PERSONAS = {
         前提をぶち壊す視点や、誰も思いつかない角度から意見を出してください。
         返答は3〜5文で簡潔に。
     """,
+}
+
+# ペルソナごとの最大出力トークン数
+MAX_TOKENS = {
+    "claude":  600,
+    "chatgpt": 2048,
+    "chaos":   2048,
 }
 
 
@@ -49,7 +56,7 @@ async def _call_one(persona: str, context: str, user_message: str):
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=PERSONAS[persona],
-            max_output_tokens=2048,
+            max_output_tokens=MAX_TOKENS[persona],
         ),
     )
     return persona, response.text
