@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ topic.title }} - ブレインストーミングエンジン</title>
+  <style>
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222e;
+      --border: #2e2e3e;
+      --text: #e8e8f0;
+      --text-muted: #888899;
+      --accent: #7c6af7;
+      --accent-glow: rgba(124, 106, 247, 0.25);
+
+      --user-border:    #6b7280;
+      --user-bg:        #1e1e2a;
+      --claude-border:  #7c6af7;
+      --claude-bg:      #1c1a2e;
+      --chatgpt-border: #22c55e;
+      --chatgpt-bg:     #111e18;
+      --chaos-border:   #f97316;
+      --chaos-bg:       #1e1710;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ヘッダー */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: color 0.2s, border-color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .back-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* レジェンド */
+    .legend-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid;
+    }
+
+    .badge.user    { background: rgba(107,114,128,0.15); border-color: var(--user-border);    color: #9ca3af; }
+    .badge.claude  { background: rgba(124,106,247,0.15); border-color: var(--claude-border);  color: #a78bfa; }
+    .badge.chatgpt { background: rgba(34,197,94,0.15);   border-color: var(--chatgpt-border); color: #4ade80; }
+    .badge.chaos   { background: rgba(249,115,22,0.15);  border-color: var(--chaos-border);   color: #fb923c; }
+
+    /* レイアウト */
+    .layout {
+      display: flex;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    /* 投稿エリア（左固定） */
+    .post-panel {
+      width: 300px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 100px;
+    }
+
+    .post-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.25rem;
+    }
+
+    .post-card h3 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    #reply-hint {
+      display: none;
+      font-size: 0.78rem;
+      color: #a78bfa;
+      background: rgba(124,106,247,0.1);
+      border: 1px solid rgba(124,106,247,0.3);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+
+    textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      resize: vertical;
+      min-height: 100px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      line-height: 1.5;
+    }
+
+    textarea::placeholder { color: var(--text-muted); }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .post-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      align-items: center;
+    }
+
+    button.primary {
+      flex: 1;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+    }
+
+    button.primary:hover {
+      background: #6a58e8;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    button.primary:active { transform: scale(0.97); }
+    button.primary:disabled { background: #333344; color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
+
+    button.ghost {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      display: none;
+    }
+
+    button.ghost:hover { color: var(--text); border-color: var(--text-muted); }
+
+    #status {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    /* ツリーエリア */
+    .tree-panel { flex: 1; min-width: 0; }
+
+    #tree { display: flex; flex-direction: column; gap: 1rem; }
+
+    .node { }
+
+    .node-card {
+      border-radius: 12px;
+      border-left: 3px solid;
+      padding: 1rem 1.1rem;
+      transition: box-shadow 0.2s;
+    }
+
+    .node-card.user    { background: var(--user-bg);    border-color: var(--user-border); }
+    .node-card.claude  { background: var(--claude-bg);  border-color: var(--claude-border); }
+    .node-card.chatgpt { background: var(--chatgpt-bg); border-color: var(--chatgpt-border); }
+    .node-card.chaos   { background: var(--chaos-bg);   border-color: var(--chaos-border); }
+
+    .node-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.6rem;
+    }
+
+    .persona-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      border: 1px solid;
+    }
+
+    .persona-tag.user    { color: #9ca3af; border-color: var(--user-border);    background: rgba(107,114,128,0.12); }
+    .persona-tag.claude  { color: #a78bfa; border-color: var(--claude-border);  background: rgba(124,106,247,0.12); }
+    .persona-tag.chatgpt { color: #4ade80; border-color: var(--chatgpt-border); background: rgba(34,197,94,0.12); }
+    .persona-tag.chaos   { color: #fb923c; border-color: var(--chaos-border);   background: rgba(249,115,22,0.12); }
+
+    .reply-btn {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0.2rem 0.5rem;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .reply-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .node-content {
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* 子ノード */
+    .children {
+      margin-top: 0.75rem;
+      margin-left: 1.5rem;
+      padding-left: 1rem;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    /* ローディング・空 */
+    .loading, .empty-tree {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 3rem 1rem;
+      font-size: 0.9rem;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* レスポンシブ */
+    @media (max-width: 720px) {
+      .layout { flex-direction: column; padding: 1rem; }
+      .post-panel { width: 100%; position: static; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" class="back-btn">← 一覧</a>
+    <h1>{{ topic.title }}</h1>
+  </header>
+
+  <div class="legend-bar">
+    <span class="badge user">🧑 You</span>
+    <span class="badge claude">🔵 批評家</span>
+    <span class="badge chatgpt">🟢 設計者</span>
+    <span class="badge chaos">🟠 カオス</span>
+  </div>
+
+  <div class="layout">
+    <div class="post-panel">
+      <div class="post-card">
+        <h3>投稿する</h3>
+        <div id="reply-hint"></div>
+        <textarea id="content" placeholder="アイデアや意見を入力..."></textarea>
+        <div class="post-actions">
+          <button class="primary" id="submit-btn" onclick="submitPost()">送信</button>
+          <button class="ghost" id="cancel-btn" onclick="cancelReply()">✕</button>
+        </div>
+        <div id="status"></div>
+      </div>
+    </div>
+
+    <div class="tree-panel">
+      <div id="tree">
+        <div class="loading">
+          <div class="spinner"></div>
+          読み込み中...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TOPIC_ID = {{ topic.id }};
+    let replyToId = null;
+
+    const PERSONA_LABELS = {
+      user:    '🧑 You',
+      claude:  '🔵 批評家',
+      chatgpt: '🟢 設計者',
+      chaos:   '🟠 カオス',
+    };
+
+    async function loadTree() {
+      const res = await fetch(`/nodes/${TOPIC_ID}`);
+      const nodes = await res.json();
+      renderTree(nodes);
+    }
+
+    function buildTree(nodes) {
+      const map = {};
+      nodes.forEach(n => { map[n.id] = { ...n, children: [] }; });
+      const roots = [];
+      nodes.forEach(n => {
+        if (n.parent_id && map[n.parent_id]) {
+          map[n.parent_id].children.push(map[n.id]);
+        } else if (!n.parent_id) {
+          roots.push(map[n.id]);
+        }
+      });
+      return roots;
+    }
+
+    function renderNode(node) {
+      const div = document.createElement('div');
+      div.className = 'node';
+      div.id = `node-${node.id}`;
+
+      const card = document.createElement('div');
+      card.className = `node-card ${node.persona}`;
+
+      const header = document.createElement('div');
+      header.className = 'node-header';
+
+      const tag = document.createElement('span');
+      tag.className = `persona-tag ${node.persona}`;
+      tag.textContent = PERSONA_LABELS[node.persona] || node.persona;
+
+      header.appendChild(tag);
+
+      if (node.persona === 'user') {
+        const replyBtn = document.createElement('button');
+        replyBtn.className = 'reply-btn';
+        replyBtn.textContent = '↩ 返信';
+        replyBtn.onclick = () => setReplyTo(node.id, node.persona, node.content);
+        header.appendChild(replyBtn);
+      }
+
+      const content = document.createElement('div');
+      content.className = 'node-content';
+      content.textContent = node.content;
+
+      card.appendChild(header);
+      card.appendChild(content);
+      div.appendChild(card);
+
+      if (node.children && node.children.length > 0) {
+        const children = document.createElement('div');
+        children.className = 'children';
+        node.children.forEach(c => children.appendChild(renderNode(c)));
+        div.appendChild(children);
+      }
+
+      return div;
+    }
+
+    function renderTree(nodes) {
+      const container = document.getElementById('tree');
+      container.innerHTML = '';
+      if (nodes.length === 0) {
+        container.innerHTML = '<div class="empty-tree">💡 まだ投稿がありません。最初の意見を投稿しましょう！</div>';
+        return;
+      }
+      buildTree(nodes).forEach(root => container.appendChild(renderNode(root)));
+    }
+
+    function setReplyTo(nodeId, persona, content) {
+      replyToId = nodeId;
+      const hint = document.getElementById('reply-hint');
+      hint.textContent = `↩ 返信先: ${PERSONA_LABELS[persona]} — ${content.slice(0, 50)}${content.length > 50 ? '...' : ''}`;
+      hint.style.display = 'block';
+      document.getElementById('cancel-btn').style.display = 'block';
+      document.getElementById('content').focus();
+      document.querySelector('.post-card').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function cancelReply() {
+      replyToId = null;
+      document.getElementById('reply-hint').style.display = 'none';
+      document.getElementById('cancel-btn').style.display = 'none';
+    }
+
+    async function submitPost() {
+      const content = document.getElementById('content').value.trim();
+      if (!content) return;
+
+      const btn = document.getElementById('submit-btn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      status.textContent = 'AIペルソナが考え中...';
+
+      try {
+        const res = await fetch('/nodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic_id: TOPIC_ID, parent_id: replyToId, content }),
+        });
+
+        if (!res.ok) throw new Error('送信失敗');
+
+        document.getElementById('content').value = '';
+        cancelReply();
+        await loadTree();
+        status.textContent = '';
+      } catch {
+        status.textContent = 'エラーが発生しました。再試行してください。';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    loadTree();
+  </script>
+</body>
+</html>

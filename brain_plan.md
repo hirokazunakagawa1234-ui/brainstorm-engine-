@@ -13,7 +13,7 @@
 |--------|---------|--------|
 | Web ホスティング | Render (Web Service) | 無料プラン |
 | データベース | Neon (PostgreSQL) | 0.5GB・永続・無料 |
-| AI API | Anthropic Claude API | 従量課金 |
+| AI API | Google Gemini API (Gemini 1.5 Flash) | 無料（15RPM・100万TPM） |
 
 **Neon を採用する理由：**
 - サーバーレス PostgreSQL で永続ストレージが無料
@@ -46,9 +46,21 @@ brainstorm-engine/
 ```python
 PERSONAS = {
     "claude": """
-        あなたは批判的・本質的な思考が得意なAIです。
-        アイデアの弱点を指摘しつつ、改善案も必ず出してください。
-        返答は3〜5文で簡潔に。
+        あなたは批評・本質抽出の専門家AIです。
+        以下の4つの観点からアイデアを評価し、必ず下記フォーマットで回答してください。
+
+        【評価観点】
+        - 実現可能性：技術・リソース・時間的に実現できるか
+        - コスト・リスク：想定されるコストや失敗リスクは何か
+        - ユーザー視点：実際に使う人にとって価値があるか
+        - 本質的課題：そもそもの前提や目的に問題はないか
+
+        【回答フォーマット】
+        ① 最も重大な弱点（観点を明示して具体的に）
+        ② その根拠（なぜそれが問題か）
+        ③ 改善提案（実行可能な具体策）
+
+        簡潔に、日本語で回答してください。
     """,
     "chatgpt": """
         あなたは実装・構造思考が得意なAIです。
@@ -65,7 +77,7 @@ PERSONAS = {
 
 | ペルソナ | 役割 | 思考スタイル |
 |--------|------|------------|
-| `claude` | 批評・本質抽出 | 弱点指摘 + 改善案提示 |
+| `claude` | 批評・本質抽出 | 4観点評価（実現可能性・コスト・ユーザー・本質）+ フォーマット固定回答 |
 | `chatgpt` | 実装・構造化 | 技術設計・手順分解 |
 | `chaos` | 破壊的創造 | 前提崩し・奇抜な発想 |
 
@@ -204,33 +216,25 @@ def get_nodes(topic_id: int) -> list:
 ## generator.py 設計
 
 ```python
-import anthropic
+import asyncio
+import google.generativeai as genai
 
-client = anthropic.Anthropic()  # ANTHROPIC_API_KEY は .env から自動読み込み
+def init_client():
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-def generate_response(persona: str, context: str, user_message: str) -> str:
-    """
-    指定ペルソナでClaude APIを呼び出し、返答テキストを返す。
-
-    Args:
-        persona:      "claude" | "chatgpt" | "chaos"
-        context:      議論のこれまでの流れ（スレッド全文）
-        user_message: 今回のユーザー投稿
-
-    Returns:
-        AIの返答テキスト
-    """
-    system_prompt = PERSONAS[persona]
-    messages = [
-        {"role": "user", "content": f"議論の文脈:\n{context}\n\n新しい投稿:\n{user_message}"}
-    ]
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        system=system_prompt,
-        messages=messages,
+async def _call_one(persona: str, context: str, user_message: str) -> tuple[str, str]:
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        system_instruction=PERSONAS[persona],
     )
-    return response.content[0].text
+    prompt = f"議論の文脈:\n{context}\n\n新しい投稿:\n{user_message}"
+    response = await model.generate_content_async(prompt)
+    return persona, response.text
+
+async def generate_all_responses(context: str, user_message: str) -> dict[str, str]:
+    tasks = [_call_one(p, context, user_message) for p in PERSONAS]
+    results = await asyncio.gather(*tasks)
+    return dict(results)
 ```
 
 ---
@@ -270,7 +274,7 @@ def generate_response(persona: str, context: str, user_message: str) -> str:
 ```
 fastapi
 uvicorn[standard]
-anthropic
+google-generativeai
 python-dotenv
 jinja2
 python-multipart
@@ -282,7 +286,7 @@ psycopg2-binary
 ## 環境変数（.env）
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AIza...
 DATABASE_URL=postgresql://user:password@ep-xxxx.neon.tech/neondb?sslmode=require
 ```
 
