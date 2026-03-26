@@ -42,7 +42,7 @@ templates = Jinja2Templates(directory="templates")
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     topics = await asyncio.to_thread(db.get_topics)
-    return templates.TemplateResponse("index.html", {"request": request, "topics": topics})
+    return templates.TemplateResponse(request, "index.html", {"topics": topics})
 
 
 @app.get("/topics")
@@ -65,7 +65,7 @@ async def topic_detail(request: Request, topic_id: int):
     topic = await asyncio.to_thread(db.get_topic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
-    return templates.TemplateResponse("topic.html", {"request": request, "topic": topic})
+    return templates.TemplateResponse(request, "topic.html", {"topic": topic})
 
 
 @app.post("/nodes")
