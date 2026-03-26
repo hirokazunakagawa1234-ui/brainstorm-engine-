@@ -16,7 +16,7 @@ load_dotenv()
 
 import db
 import generator
-from models import NodeCreate
+from models import NodeCreate, TITLE_MAX_LEN
 
 
 def _validate_env():
@@ -54,6 +54,8 @@ async def topics_redirect():
 async def create_topic(title: str = Form(...)):
     if not title.strip():
         raise HTTPException(status_code=400, detail="議題タイトルを入力してください")
+    if len(title.strip()) > TITLE_MAX_LEN:
+        raise HTTPException(status_code=400, detail=f"議題タイトルは{TITLE_MAX_LEN}文字以内で入力してください")
     topic_id = await asyncio.to_thread(db.create_topic, title.strip())
     return RedirectResponse(url=f"/topics/{topic_id}", status_code=303)
 
@@ -93,19 +95,16 @@ async def create_node(payload: NodeCreate):
         responses = await generator.generate_all_responses(context, payload.content.strip())
     except Exception as e:
         logger.exception("AI応答の取得に失敗しました")
-        raise HTTPException(status_code=502, detail=f"AI応答の取得に失敗しました: {str(e)}")
+        raise HTTPException(status_code=502, detail="AI応答の取得に失敗しました")
 
-    # ユーザーノードを保存
+    # ユーザーノードとAIノードを単一トランザクションで保存
     user_node_id = await asyncio.to_thread(
-        db.create_node,
+        db.create_user_and_ai_nodes,
         payload.topic_id,
         payload.parent_id,
-        "user",
         payload.content.strip(),
+        responses,
     )
-
-    # AIノードを単一トランザクションで一括保存
-    await asyncio.to_thread(db.create_ai_nodes, payload.topic_id, user_node_id, responses)
 
     return {"user_node_id": user_node_id}
 

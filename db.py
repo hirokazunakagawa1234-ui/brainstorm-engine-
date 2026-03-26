@@ -104,15 +104,23 @@ def create_node(topic_id: int, parent_id: Optional[int], persona: str, content: 
             return cur.fetchone()[0]
 
 
-def create_ai_nodes(topic_id: int, parent_id: int, responses: dict) -> None:
-    """AIペルソナのノードを単一トランザクションで一括保存する"""
+def create_user_and_ai_nodes(
+    topic_id: int, parent_id: Optional[int], content: str, responses: dict
+) -> int:
+    """ユーザーノードとAIノードを単一トランザクションで保存する"""
     with PooledConn() as conn:
         with conn.cursor() as cur:
-            for persona, content in responses.items():
+            cur.execute(
+                "INSERT INTO nodes (topic_id, parent_id, persona, content) VALUES (%s, %s, %s, %s) RETURNING id",
+                (topic_id, parent_id, "user", content),
+            )
+            user_node_id = cur.fetchone()[0]
+            for persona, ai_content in responses.items():
                 cur.execute(
                     "INSERT INTO nodes (topic_id, parent_id, persona, content) VALUES (%s, %s, %s, %s)",
-                    (topic_id, parent_id, persona, content),
+                    (topic_id, user_node_id, persona, ai_content),
                 )
+            return user_node_id
 
 
 def get_nodes(topic_id: int) -> list:
