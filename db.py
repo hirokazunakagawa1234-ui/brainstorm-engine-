@@ -13,6 +13,7 @@ def init_pool():
         minconn=1,
         maxconn=10,
         dsn=os.environ["DATABASE_URL"],
+        connect_timeout=10,
     )
 
 
@@ -93,15 +94,6 @@ def get_node(node_id: int) -> Optional[dict]:
             row = cur.fetchone()
             return dict(row) if row else None
 
-
-def create_node(topic_id: int, parent_id: Optional[int], persona: str, content: str) -> int:
-    with PooledConn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO nodes (topic_id, parent_id, persona, content) VALUES (%s, %s, %s, %s) RETURNING id",
-                (topic_id, parent_id, persona, content),
-            )
-            return cur.fetchone()[0]
 
 
 def create_user_and_ai_nodes(

@@ -109,6 +109,11 @@ async def create_node(payload: NodeCreate):
     return {"user_node_id": user_node_id}
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/nodes/{topic_id}")
 async def get_nodes(topic_id: int):
     if await asyncio.to_thread(db.get_topic, topic_id) is None:
