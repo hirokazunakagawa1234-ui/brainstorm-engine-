@@ -77,15 +77,11 @@ async def create_node(payload: NodeCreate):
     if await asyncio.to_thread(db.get_topic, payload.topic_id) is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
 
-    # parent_id が同一トピックに属するか確認
-    if payload.parent_id is not None:
-        parent_node = await asyncio.to_thread(db.get_node, payload.parent_id)
-        if parent_node is None or parent_node["topic_id"] != payload.topic_id:
-            raise HTTPException(status_code=400, detail="parent_id が無効です")
-
-    # 議論の文脈：祖先チェーンのみ（トークン節約）
+    # 議論の文脈を構築（parent_id の存在・トピック一致確認を兼ねる）
     if payload.parent_id is not None:
         ancestor_nodes = await asyncio.to_thread(db.get_ancestor_chain, payload.parent_id)
+        if not ancestor_nodes or ancestor_nodes[-1]["topic_id"] != payload.topic_id:
+            raise HTTPException(status_code=400, detail="parent_id が無効です")
         context = "\n".join([f"[{n['persona']}] {n['content']}" for n in ancestor_nodes])
     else:
         context = "(新しいスレッドの開始)"
@@ -111,6 +107,10 @@ async def create_node(payload: NodeCreate):
 
 @app.get("/health")
 async def health():
+    try:
+        await asyncio.to_thread(db.ping)
+    except Exception:
+        raise HTTPException(status_code=503, detail="DB接続に失敗しました")
     return {"status": "ok"}
 
 

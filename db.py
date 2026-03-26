@@ -72,6 +72,13 @@ def create_topic(title: str) -> int:
             return cur.fetchone()[0]
 
 
+def ping() -> None:
+    """DB疎通確認（SELECT 1）"""
+    with PooledConn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+
+
 def get_topics() -> list:
     with PooledConn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

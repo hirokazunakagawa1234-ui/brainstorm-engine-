@@ -36,6 +36,21 @@ def test_index_returns_html_with_topics(client):
 
 # ── GET /topics ────────────────────────────────────────────────────────────────
 
+# ── GET /health ───────────────────────────────────────────────────────────────
+
+def test_health_ok(client):
+    with patch("db.ping"):
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_health_db_down(client):
+    with patch("db.ping", side_effect=Exception("connection refused")):
+        resp = client.get("/health")
+    assert resp.status_code == 503
+
+
 def test_topics_redirects_to_root(client):
     resp = client.get("/topics", follow_redirects=False)
     assert resp.status_code == 301
@@ -106,7 +121,6 @@ def test_create_node_new_thread(client):
 def test_create_node_reply(client):
     parent = {**SAMPLE_NODE, "id": 5, "topic_id": 1}
     with patch("db.get_topic", return_value=SAMPLE_TOPIC), \
-         patch("db.get_node", return_value=parent), \
          patch("db.get_ancestor_chain", return_value=[parent]), \
          patch("generator.generate_all_responses",
                new_callable=AsyncMock, return_value=SAMPLE_RESPONSES), \
@@ -135,14 +149,14 @@ def test_create_node_topic_not_found(client):
 def test_create_node_parent_belongs_to_different_topic(client):
     parent = {**SAMPLE_NODE, "id": 5, "topic_id": 99}  # 別トピック
     with patch("db.get_topic", return_value=SAMPLE_TOPIC), \
-         patch("db.get_node", return_value=parent):
+         patch("db.get_ancestor_chain", return_value=[parent]):
         resp = client.post("/nodes", json={"topic_id": 1, "parent_id": 5, "content": "テスト"})
     assert resp.status_code == 400
 
 
 def test_create_node_parent_not_exist(client):
     with patch("db.get_topic", return_value=SAMPLE_TOPIC), \
-         patch("db.get_node", return_value=None):
+         patch("db.get_ancestor_chain", return_value=[]):  # 空 = 存在しない
         resp = client.post("/nodes", json={"topic_id": 1, "parent_id": 999, "content": "テスト"})
     assert resp.status_code == 400
 

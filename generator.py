@@ -4,6 +4,8 @@ from typing import Optional
 from google import genai
 from google.genai import types
 
+MODEL_NAME = "gemini-2.5-flash"
+
 _client: Optional[genai.Client] = None
 
 PERSONAS = {
@@ -51,7 +53,7 @@ def init_client():
 async def _call_one(persona: str, context: str, user_message: str):
     prompt = f"議論の文脈:\n{context}\n\n新しい投稿:\n{user_message}"
     response = await _client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model=MODEL_NAME,
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=PERSONAS[persona],
