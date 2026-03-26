@@ -229,3 +229,24 @@ services:
 
 ### テスト
 - `test_main.py` を新規追加（21ケース：正常系・異常系・バリデーション・AI失敗・孤立ノード防止）
+- `requirements-dev.txt` を作成しテスト依存（pytest・httpx・pytest-asyncio）を本番と分離
+
+---
+
+## 追加改善（2026-03-26 第2弾）
+
+### 可用性・運用
+- `GET /health` を実装（Render ヘルスチェック用）
+- `db.ping()` を追加し `/health` で DB 疎通確認 → DB 障害時は 503 を返す
+- `ThreadedConnectionPool` に `connect_timeout=10` を追加（Neon コールドスタート時のハング防止）
+
+### パフォーマンス
+- `POST /nodes` で `get_node` + `get_ancestor_chain` の二重 DB 呼び出しを解消
+  → `get_ancestor_chain` の末尾ノードで `topic_id` 検証を兼ねることで1往復削減
+
+### コード品質
+- `db.create_node`（使われていたデッドコード）を削除
+- `generator.py` のモデル名 `"gemini-2.5-flash"` を `MODEL_NAME` 定数に抽出
+
+### テスト
+- `/health` の正常系・DB障害系テストを追加（計 23 件）
