@@ -61,8 +61,14 @@ async def _call_one(persona: str, context: str, user_message: str):
     return persona, response.text
 
 
+RESPONSE_TIMEOUT = 30  # seconds
+
+
 async def generate_all_responses(context: str, user_message: str):
     """3ペルソナを並列呼び出しして {persona: text} を返す。"""
     tasks = [_call_one(p, context, user_message) for p in PERSONAS]
-    results = await asyncio.gather(*tasks)
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=RESPONSE_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"AI応答がタイムアウトしました（{RESPONSE_TIMEOUT}秒）")
     return dict(results)

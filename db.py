@@ -3,16 +3,13 @@ from typing import Optional
 import psycopg2
 import psycopg2.pool
 from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
 
-load_dotenv()
-
-_pool: Optional[psycopg2.pool.SimpleConnectionPool] = None
+_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 
 
 def init_pool():
     global _pool
-    _pool = psycopg2.pool.SimpleConnectionPool(
+    _pool = psycopg2.pool.ThreadedConnectionPool(
         minconn=1,
         maxconn=10,
         dsn=os.environ["DATABASE_URL"],
@@ -89,6 +86,14 @@ def get_topic(topic_id: int) -> Optional[dict]:
             return dict(row) if row else None
 
 
+def get_node(node_id: int) -> Optional[dict]:
+    with PooledConn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM nodes WHERE id = %s", (node_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
 def create_node(topic_id: int, parent_id: Optional[int], persona: str, content: str) -> int:
     with PooledConn() as conn:
         with conn.cursor() as cur:
@@ -97,6 +102,17 @@ def create_node(topic_id: int, parent_id: Optional[int], persona: str, content: 
                 (topic_id, parent_id, persona, content),
             )
             return cur.fetchone()[0]
+
+
+def create_ai_nodes(topic_id: int, parent_id: int, responses: dict) -> None:
+    """AIペルソナのノードを単一トランザクションで一括保存する"""
+    with PooledConn() as conn:
+        with conn.cursor() as cur:
+            for persona, content in responses.items():
+                cur.execute(
+                    "INSERT INTO nodes (topic_id, parent_id, persona, content) VALUES (%s, %s, %s, %s)",
+                    (topic_id, parent_id, persona, content),
+                )
 
 
 def get_nodes(topic_id: int) -> list:
@@ -113,13 +129,13 @@ def get_ancestor_chain(node_id: int) -> list:
     """ルートから node_id までの祖先ノードチェーンを返す（ルート→末端の順）"""
     with PooledConn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            chain = []
-            current_id = node_id
-            while current_id is not None:
-                cur.execute("SELECT * FROM nodes WHERE id = %s", (current_id,))
-                row = cur.fetchone()
-                if row is None:
-                    break
-                chain.append(dict(row))
-                current_id = row["parent_id"]
-            return list(reversed(chain))
+            cur.execute("""
+                WITH RECURSIVE ancestors AS (
+                    SELECT * FROM nodes WHERE id = %s
+                    UNION ALL
+                    SELECT n.* FROM nodes n
+                    INNER JOIN ancestors a ON n.id = a.parent_id
+                )
+                SELECT * FROM ancestors ORDER BY id ASC
+            """, (node_id,))
+            return [dict(r) for r in cur.fetchall()]

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -40,21 +41,26 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    topics = db.get_topics()
+    topics = await asyncio.to_thread(db.get_topics)
     return templates.TemplateResponse("index.html", {"request": request, "topics": topics})
+
+
+@app.get("/topics")
+async def topics_redirect():
+    return RedirectResponse(url="/", status_code=301)
 
 
 @app.post("/topics")
 async def create_topic(title: str = Form(...)):
     if not title.strip():
         raise HTTPException(status_code=400, detail="議題タイトルを入力してください")
-    topic_id = db.create_topic(title.strip())
+    topic_id = await asyncio.to_thread(db.create_topic, title.strip())
     return RedirectResponse(url=f"/topics/{topic_id}", status_code=303)
 
 
 @app.get("/topics/{topic_id}", response_class=HTMLResponse)
 async def topic_detail(request: Request, topic_id: int):
-    topic = db.get_topic(topic_id)
+    topic = await asyncio.to_thread(db.get_topic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
     return templates.TemplateResponse("topic.html", {"request": request, "topic": topic})
@@ -66,45 +72,46 @@ async def create_node(payload: NodeCreate):
         raise HTTPException(status_code=400, detail="投稿内容を入力してください")
 
     # 対象議題の存在確認
-    if db.get_topic(payload.topic_id) is None:
+    if await asyncio.to_thread(db.get_topic, payload.topic_id) is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
 
-    # ユーザーノードを保存
-    user_node_id = db.create_node(
-        topic_id=payload.topic_id,
-        parent_id=payload.parent_id,
-        persona="user",
-        content=payload.content.strip(),
-    )
+    # parent_id が同一トピックに属するか確認
+    if payload.parent_id is not None:
+        parent_node = await asyncio.to_thread(db.get_node, payload.parent_id)
+        if parent_node is None or parent_node["topic_id"] != payload.topic_id:
+            raise HTTPException(status_code=400, detail="parent_id が無効です")
 
     # 議論の文脈：祖先チェーンのみ（トークン節約）
     if payload.parent_id is not None:
-        ancestor_nodes = db.get_ancestor_chain(payload.parent_id)
+        ancestor_nodes = await asyncio.to_thread(db.get_ancestor_chain, payload.parent_id)
         context = "\n".join([f"[{n['persona']}] {n['content']}" for n in ancestor_nodes])
     else:
         context = "(新しいスレッドの開始)"
 
-    # 3ペルソナを並列呼び出し
+    # 3ペルソナを並列呼び出し（DBへの書き込み前に実行してDBの孤立ノードを防ぐ）
     try:
         responses = await generator.generate_all_responses(context, payload.content.strip())
     except Exception as e:
         logger.exception("AI応答の取得に失敗しました")
         raise HTTPException(status_code=502, detail=f"AI応答の取得に失敗しました: {str(e)}")
 
-    # AIノードを保存
-    for persona, text in responses.items():
-        db.create_node(
-            topic_id=payload.topic_id,
-            parent_id=user_node_id,
-            persona=persona,
-            content=text,
-        )
+    # ユーザーノードを保存
+    user_node_id = await asyncio.to_thread(
+        db.create_node,
+        payload.topic_id,
+        payload.parent_id,
+        "user",
+        payload.content.strip(),
+    )
+
+    # AIノードを単一トランザクションで一括保存
+    await asyncio.to_thread(db.create_ai_nodes, payload.topic_id, user_node_id, responses)
 
     return {"user_node_id": user_node_id}
 
 
 @app.get("/nodes/{topic_id}")
 async def get_nodes(topic_id: int):
-    if db.get_topic(topic_id) is None:
+    if await asyncio.to_thread(db.get_topic, topic_id) is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
-    return db.get_nodes(topic_id)
+    return await asyncio.to_thread(db.get_nodes, topic_id)
