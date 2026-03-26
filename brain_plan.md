@@ -139,12 +139,14 @@ CREATE TABLE nodes (
         ↓
 main.py: POST /nodes を受信
         ↓
-db.py: ユーザーノードをDBに保存（Neon PostgreSQL）
+db.py: 議題・parent_id の存在確認（parent_id は同一トピック内か検証）
+        ↓
+db.py: 祖先チェーンを再帰CTE（1クエリ）で取得し文脈を構築
         ↓
 generator.py: 各ペルソナ (claude / chatgpt / chaos) に対して
-              asyncio.gather() で並列呼び出し
-        ↓
-db.py: 3つのAIノードをDBに保存（parent_id = ユーザーノードID）
+              asyncio.gather() で並列呼び出し（タイムアウト30秒）
+        ↓  ← AI失敗時はここでHTTP 502を返し、DBへの書き込みは行わない
+db.py: ユーザーノード＋3AIノードを単一トランザクションで保存
         ↓
 フロントエンド: topic.html の JS がツリーを再描画
 ```
@@ -200,3 +202,30 @@ services:
 - Gemini API の無料枠は 15RPM（1投稿で3回呼び出しが発生するため注意）
 - `.env` は `.gitignore` に追加し、絶対にコミットしない
 - Render 無料プランは15分アイドルでスリープ（初回アクセスに30〜60秒かかる場合あり）
+
+---
+
+## 品質改善履歴（2026-03-26）
+
+### 非同期・パフォーマンス
+- 全 DB コールを `asyncio.to_thread()` でラップ → asyncエンドポイントのイベントループブロッキングを解消
+- `SimpleConnectionPool` → `ThreadedConnectionPool` に変更（スレッドセーフ）
+- `get_ancestor_chain` のN+1クエリを再帰CTE（`WITH RECURSIVE`）で1クエリに統合
+
+### データ整合性
+- ユーザーノード＋AIノードを `create_user_and_ai_nodes` で単一トランザクション化（クラッシュ時の孤立ノード防止）
+- AI呼び出しをDB書き込みより前に実行（AI失敗時にDBへの書き込みを行わない）
+- `parent_id` が同一トピックに属するか検証する処理を追加
+
+### セキュリティ・バリデーション
+- 入力長の上限を追加（`title`: 200字、`content`: 2000字）
+- AI失敗時の502レスポンスから内部エラー文字列の露出を除去
+- Gemini API 呼び出しに30秒タイムアウトを設定
+
+### コード品質
+- 未使用の `TopicCreate` モデルを削除
+- `db.py` の冗長な `load_dotenv` を削除
+- `TemplateResponse` の引数順序を新 Starlette API に合わせて修正
+
+### テスト
+- `test_main.py` を新規追加（21ケース：正常系・異常系・バリデーション・AI失敗・孤立ノード防止）
