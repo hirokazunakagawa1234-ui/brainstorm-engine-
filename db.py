@@ -10,11 +10,18 @@ _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 def init_pool():
     global _pool
     _pool = psycopg2.pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=10,
+        minconn=2,
+        maxconn=20,
         dsn=os.environ["DATABASE_URL"],
         connect_timeout=10,
     )
+
+
+def close_pool():
+    global _pool
+    if _pool is not None:
+        _pool.closeall()
+        _pool = None
 
 
 def get_conn():
@@ -93,7 +100,7 @@ def ping() -> None:
 def get_topics() -> list:
     with PooledConn(readonly=True) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, title, created_at FROM topics ORDER BY created_at DESC")
+            cur.execute("SELECT id, title, created_at FROM topics ORDER BY created_at DESC LIMIT 200")
             return [dict(r) for r in cur.fetchall()]
 
 
@@ -141,12 +148,13 @@ def get_ancestor_chain(node_id: int) -> list:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 WITH RECURSIVE ancestors AS (
-                    SELECT id, topic_id, parent_id, persona, content, created_at
+                    SELECT id, topic_id, parent_id, persona, content, created_at, 0 AS depth
                     FROM nodes WHERE id = %s
                     UNION ALL
-                    SELECT n.id, n.topic_id, n.parent_id, n.persona, n.content, n.created_at
+                    SELECT n.id, n.topic_id, n.parent_id, n.persona, n.content, n.created_at, a.depth + 1
                     FROM nodes n
                     INNER JOIN ancestors a ON n.id = a.parent_id
+                    WHERE a.depth < 100
                 )
                 SELECT id, topic_id, parent_id, persona, content, created_at
                 FROM ancestors ORDER BY id ASC

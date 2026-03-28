@@ -3,7 +3,8 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Path
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -12,7 +13,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_ipaddr
 from slowapi.errors import RateLimitExceeded
 
-logging.basicConfig(level=logging.INFO)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -23,6 +25,8 @@ from models import NodeCreate, TITLE_MAX_LEN
 
 _ratelimit_enabled = os.environ.get("RATELIMIT_ENABLED", "true").lower() == "true"
 limiter = Limiter(key_func=get_ipaddr, enabled=_ratelimit_enabled)
+
+VALID_PERSONAS = {"claude", "chatgpt", "chaos"}
 
 
 def _validate_env():
@@ -38,11 +42,13 @@ async def lifespan(app: FastAPI):
     db.init_db()
     generator.init_client()
     yield
+    db.close_pool()
 
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -59,7 +65,8 @@ async def topics_redirect():
 
 
 @app.post("/topics")
-async def create_topic(title: str = Form(...)):
+@limiter.limit("5/minute")
+async def create_topic(request: Request, title: str = Form(...)):
     if not title.strip():
         raise HTTPException(status_code=400, detail="議題タイトルを入力してください")
     if len(title.strip()) > TITLE_MAX_LEN:
@@ -69,7 +76,7 @@ async def create_topic(title: str = Form(...)):
 
 
 @app.get("/topics/{topic_id}", response_class=HTMLResponse)
-async def topic_detail(request: Request, topic_id: int):
+async def topic_detail(request: Request, topic_id: int = Path(..., ge=1)):
     topic = await asyncio.to_thread(db.get_topic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
@@ -98,8 +105,14 @@ async def create_node(request: Request, payload: NodeCreate):
     # 3ペルソナを並列呼び出し（DBへの書き込み前に実行してDBの孤立ノードを防ぐ）
     try:
         responses = await generator.generate_all_responses(context, payload.content.strip())
-    except Exception as e:
+    except Exception:
         logger.exception("AI応答の取得に失敗しました")
+        raise HTTPException(status_code=502, detail="AI応答の取得に失敗しました")
+
+    # ペルソナ検証
+    invalid = set(responses.keys()) - VALID_PERSONAS
+    if invalid:
+        logger.error("不正なペルソナが返されました: %s", invalid)
         raise HTTPException(status_code=502, detail="AI応答の取得に失敗しました")
 
     # ユーザーノードとAIノードを単一トランザクションで保存
@@ -124,7 +137,7 @@ async def health():
 
 
 @app.get("/nodes/{topic_id}")
-async def get_nodes(topic_id: int):
+async def get_nodes(topic_id: int = Path(..., ge=1)):
     if await asyncio.to_thread(db.get_topic, topic_id) is None:
         raise HTTPException(status_code=404, detail="議題が見つかりません")
     return await asyncio.to_thread(db.get_nodes, topic_id)

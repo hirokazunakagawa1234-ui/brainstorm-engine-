@@ -4,10 +4,11 @@ import logging
 from typing import Optional
 from google import genai
 from google.genai import types
+from google.api_core import exceptions as google_exceptions
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 _client: Optional[genai.Client] = None
 
@@ -59,16 +60,29 @@ def init_client():
     _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
+def close_client():
+    global _client
+    _client = None
+
+
 async def _call_one(persona: str, context: str, user_message: str):
     prompt = f"議論の文脈:\n{context}\n\n新しい投稿:\n{user_message}"
-    response = await _client.aio.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=PERSONAS[persona],
-            max_output_tokens=MAX_TOKENS[persona],
-        ),
-    )
+    try:
+        response = await _client.aio.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=PERSONAS[persona],
+                max_output_tokens=MAX_TOKENS[persona],
+            ),
+        )
+    except google_exceptions.PermissionDenied:
+        raise RuntimeError(f"{persona}: Gemini APIキーが無効または期限切れです")
+    except google_exceptions.ResourceExhausted:
+        raise RuntimeError(f"{persona}: Gemini APIのクォータを超過しました")
+    except google_exceptions.InvalidArgument as e:
+        raise RuntimeError(f"{persona}: APIリクエストが不正です: {e}")
+
     if response.text is None:
         raise RuntimeError(f"{persona}: AI応答のテキストが空でした（安全フィルター等の可能性）")
     candidate = response.candidates[0] if response.candidates else None
@@ -82,9 +96,11 @@ RESPONSE_TIMEOUT = 30  # seconds
 
 async def generate_all_responses(context: str, user_message: str):
     """3ペルソナを並列呼び出しして {persona: text} を返す。"""
-    tasks = [_call_one(p, context, user_message) for p in PERSONAS]
+    tasks = [asyncio.ensure_future(_call_one(p, context, user_message)) for p in PERSONAS]
     try:
         results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=RESPONSE_TIMEOUT)
     except asyncio.TimeoutError:
+        for t in tasks:
+            t.cancel()
         raise RuntimeError(f"AI応答がタイムアウトしました（{RESPONSE_TIMEOUT}秒）")
     return dict(results)
