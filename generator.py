@@ -60,6 +60,8 @@ async def _call_one(persona: str, context: str, user_message: str):
             max_output_tokens=MAX_TOKENS[persona],
         ),
     )
+    if response.text is None:
+        raise RuntimeError(f"{persona}: AI応答のテキストが空でした（安全フィルター等の可能性）")
     return persona, response.text
 
 

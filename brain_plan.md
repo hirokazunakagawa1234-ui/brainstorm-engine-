@@ -250,3 +250,28 @@ services:
 
 ### テスト
 - `/health` の正常系・DB障害系テストを追加（計 23 件）
+
+---
+
+## 追加改善（2026-03-28）
+
+### バグ修正
+- `generator.py`: `response.text` が `None`（安全フィルター等）の場合に RuntimeError を送出するよう修正
+- `templates/topic.html`: `buildTree` で孤立ノード（親が存在しないノード）を roots にフォールバックするよう修正
+
+### コード品質
+- `db.py`: 未使用のデッドコード `get_node` を削除
+- `requirements.txt`: 全パッケージをバージョンピン留め（再現性確保）
+
+### バリデーション強化
+- `models.py`: `NodeCreate.content` に `min_length=1` を追加
+- `models.py`: `NodeCreate.topic_id` に `ge=1`（正数制約）を追加
+
+### フロントエンド
+- `index.html`: タイトル `<input>` に `maxlength="200"` を追加（即時フィードバック）
+- `topic.html`: 本文 `<textarea>` に `maxlength="2000"` を追加
+- `topic.html`: `loadTree()` に try/catch を追加（ネットワーク障害時の無限スピナー解消）
+- `topic.html`: `submitPost()` でサーバーが返す `detail` メッセージをそのまま表示
+
+### 運用
+- `render.yaml`: `healthCheckPath: /health` を追加（Render が `/health` を監視）

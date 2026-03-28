@@ -94,15 +94,6 @@ def get_topic(topic_id: int) -> Optional[dict]:
             return dict(row) if row else None
 
 
-def get_node(node_id: int) -> Optional[dict]:
-    with PooledConn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM nodes WHERE id = %s", (node_id,))
-            row = cur.fetchone()
-            return dict(row) if row else None
-
-
-
 def create_user_and_ai_nodes(
     topic_id: int, parent_id: Optional[int], content: str, responses: dict
 ) -> int:

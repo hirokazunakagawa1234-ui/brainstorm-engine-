@@ -6,6 +6,6 @@ CONTENT_MAX_LEN = 2000
 
 
 class NodeCreate(BaseModel):
-    topic_id: int
+    topic_id: int = Field(..., ge=1)
     parent_id: Optional[int] = None
-    content: str = Field(..., max_length=CONTENT_MAX_LEN)
+    content: str = Field(..., min_length=1, max_length=CONTENT_MAX_LEN)

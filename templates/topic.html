@@ -339,7 +339,7 @@
       <div class="post-card">
         <h3>投稿する</h3>
         <div id="reply-hint"></div>
-        <textarea id="content" placeholder="アイデアや意見を入力..."></textarea>
+        <textarea id="content" placeholder="アイデアや意見を入力..." maxlength="2000"></textarea>
         <div class="post-actions">
           <button class="primary" id="submit-btn" onclick="submitPost()">送信</button>
           <button class="ghost" id="cancel-btn" onclick="cancelReply()">✕</button>
@@ -370,9 +370,15 @@
     };
 
     async function loadTree() {
-      const res = await fetch(`/nodes/${TOPIC_ID}`);
-      const nodes = await res.json();
-      renderTree(nodes);
+      try {
+        const res = await fetch(`/nodes/${TOPIC_ID}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const nodes = await res.json();
+        renderTree(nodes);
+      } catch (e) {
+        document.getElementById('tree').innerHTML =
+          '<div class="empty-tree">⚠️ 読み込みに失敗しました。ページを再読み込みしてください。</div>';
+      }
     }
 
     function buildTree(nodes) {
@@ -382,7 +388,7 @@
       nodes.forEach(n => {
         if (n.parent_id && map[n.parent_id]) {
           map[n.parent_id].children.push(map[n.id]);
-        } else if (!n.parent_id) {
+        } else {
           roots.push(map[n.id]);
         }
       });
@@ -474,14 +480,17 @@
           body: JSON.stringify({ topic_id: TOPIC_ID, parent_id: replyToId, content }),
         });
 
-        if (!res.ok) throw new Error('送信失敗');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || `エラー (HTTP ${res.status})`);
+        }
 
         document.getElementById('content').value = '';
         cancelReply();
         await loadTree();
         status.textContent = '';
-      } catch {
-        status.textContent = 'エラーが発生しました。再試行してください。';
+      } catch (e) {
+        status.textContent = e.message || 'エラーが発生しました。再試行してください。';
       } finally {
         btn.disabled = false;
       }
