@@ -8,6 +8,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,6 +20,9 @@ load_dotenv()
 import db
 import generator
 from models import NodeCreate, TITLE_MAX_LEN
+
+_ratelimit_enabled = os.environ.get("RATELIMIT_ENABLED", "true").lower() == "true"
+limiter = Limiter(key_func=get_remote_address, enabled=_ratelimit_enabled)
 
 
 def _validate_env():
@@ -35,6 +41,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -69,7 +77,8 @@ async def topic_detail(request: Request, topic_id: int):
 
 
 @app.post("/nodes")
-async def create_node(payload: NodeCreate):
+@limiter.limit("10/minute")
+async def create_node(request: Request, payload: NodeCreate):
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="投稿内容を入力してください")
 

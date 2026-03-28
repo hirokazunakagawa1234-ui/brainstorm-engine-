@@ -23,25 +23,33 @@ def get_conn():
     return _pool.getconn()
 
 
-def release_conn(conn):
+def release_conn(conn, close: bool = False):
     if _pool is not None:
-        _pool.putconn(conn)
+        _pool.putconn(conn, close=close)
 
 
 class PooledConn:
     """コンテキストマネージャで接続を自動返却する"""
+    def __init__(self, readonly: bool = False):
+        self.readonly = readonly
+
     def __enter__(self):
         self.conn = get_conn()
         return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        close = False
         try:
             if exc_type is None:
-                self.conn.commit()
+                if not self.readonly:
+                    self.conn.commit()
             else:
-                self.conn.rollback()
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    close = True  # rollback失敗 = 接続が壊れている → プールから除去
         finally:
-            release_conn(self.conn)
+            release_conn(self.conn, close=close)
         return False
 
 
@@ -62,6 +70,8 @@ def init_db():
                     content    TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE INDEX IF NOT EXISTS idx_nodes_topic_id  ON nodes(topic_id);
+                CREATE INDEX IF NOT EXISTS idx_nodes_parent_id ON nodes(parent_id);
             """)
 
 
@@ -74,22 +84,22 @@ def create_topic(title: str) -> int:
 
 def ping() -> None:
     """DB疎通確認（SELECT 1）"""
-    with PooledConn() as conn:
+    with PooledConn(readonly=True) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
 
 
 def get_topics() -> list:
-    with PooledConn() as conn:
+    with PooledConn(readonly=True) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM topics ORDER BY created_at DESC")
+            cur.execute("SELECT id, title, created_at FROM topics ORDER BY created_at DESC")
             return [dict(r) for r in cur.fetchall()]
 
 
 def get_topic(topic_id: int) -> Optional[dict]:
-    with PooledConn() as conn:
+    with PooledConn(readonly=True) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM topics WHERE id = %s", (topic_id,))
+            cur.execute("SELECT id, title, created_at FROM topics WHERE id = %s", (topic_id,))
             row = cur.fetchone()
             return dict(row) if row else None
 
@@ -114,10 +124,11 @@ def create_user_and_ai_nodes(
 
 
 def get_nodes(topic_id: int) -> list:
-    with PooledConn() as conn:
+    with PooledConn(readonly=True) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                "SELECT * FROM nodes WHERE topic_id = %s ORDER BY created_at ASC",
+                "SELECT id, topic_id, parent_id, persona, content, created_at"
+                " FROM nodes WHERE topic_id = %s ORDER BY created_at ASC",
                 (topic_id,),
             )
             return [dict(r) for r in cur.fetchall()]
@@ -125,15 +136,18 @@ def get_nodes(topic_id: int) -> list:
 
 def get_ancestor_chain(node_id: int) -> list:
     """ルートから node_id までの祖先ノードチェーンを返す（ルート→末端の順）"""
-    with PooledConn() as conn:
+    with PooledConn(readonly=True) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 WITH RECURSIVE ancestors AS (
-                    SELECT * FROM nodes WHERE id = %s
+                    SELECT id, topic_id, parent_id, persona, content, created_at
+                    FROM nodes WHERE id = %s
                     UNION ALL
-                    SELECT n.* FROM nodes n
+                    SELECT n.id, n.topic_id, n.parent_id, n.persona, n.content, n.created_at
+                    FROM nodes n
                     INNER JOIN ancestors a ON n.id = a.parent_id
                 )
-                SELECT * FROM ancestors ORDER BY id ASC
+                SELECT id, topic_id, parent_id, persona, content, created_at
+                FROM ancestors ORDER BY id ASC
             """, (node_id,))
             return [dict(r) for r in cur.fetchall()]

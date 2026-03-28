@@ -275,3 +275,35 @@ services:
 
 ### 運用
 - `render.yaml`: `healthCheckPath: /health` を追加（Render が `/health` を監視）
+
+---
+
+## 追加改善（2026-03-28 第2弾）
+
+### パフォーマンス
+- `db.py`: `nodes.topic_id` / `nodes.parent_id` に `CREATE INDEX IF NOT EXISTS` を追加（フルスキャン解消）
+
+### 信頼性
+- `db.py`: `PooledConn.__exit__` で `rollback()` が失敗した場合、壊れた接続を `close=True` でプールから除去するよう修正
+- `db.py`: `PooledConn` に `readonly` フラグを追加し、読み取り専用クエリでは `COMMIT` を発行しないよう変更
+
+### バリデーション
+- `models.py`: `parent_id` に `ge=1` を追加（0・負数を422で拒否）
+
+### セキュリティ
+- `main.py`: `slowapi` によるレート制限を追加（`POST /nodes` を 10回/分 に制限）
+- `main.py`: `RATELIMIT_ENABLED` 環境変数でテスト時に無効化可能
+
+### コード品質
+- `db.py`: 全クエリの `SELECT *` を明示カラム列挙に変更
+- `requirements.txt`: `jinja2` → `Jinja2` に修正（パッケージ名と一致）
+- `requirements.txt`: `slowapi==0.1.9` を追加
+
+### フロントエンド
+- `index.html`: フォーム送信中にボタンを無効化し「投稿中...」と表示
+
+### テスト
+- `topic_id=0`・`topic_id=-1`・`parent_id=0` の422ケースを追加
+- AI が `response.text=None` を返したとき502になり内部エラーが露出しないことを確認
+- テスト時に `RATELIMIT_ENABLED=false` を設定してレート制限を無効化
+- 計 27 件

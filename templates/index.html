@@ -231,7 +231,7 @@
   <main>
     <div class="post-card">
       <h2>新しい議題を投稿</h2>
-      <form action="/topics" method="post">
+      <form action="/topics" method="post" onsubmit="const b=this.querySelector('button');b.disabled=true;b.textContent='投稿中...'">
         <div class="input-row">
           <input type="text" name="title" placeholder="例：リモートワーク時代のチームビルディング" maxlength="200" required>
           <button type="submit" class="primary">投稿</button>

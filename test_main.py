@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost/test")
+os.environ.setdefault("RATELIMIT_ENABLED", "false")
 
 from main import app
 from models import NodeCreate, CONTENT_MAX_LEN, TITLE_MAX_LEN
@@ -177,6 +178,32 @@ def test_create_node_ai_failure_does_not_write_to_db(client):
          patch("db.create_user_and_ai_nodes") as mock_write:
         client.post("/nodes", json={"topic_id": 1, "content": "テスト"})
     mock_write.assert_not_called()  # AI失敗時はDBに書かれないこと
+
+
+def test_create_node_topic_id_zero(client):
+    resp = client.post("/nodes", json={"topic_id": 0, "content": "テスト"})
+    assert resp.status_code == 422
+
+
+def test_create_node_topic_id_negative(client):
+    resp = client.post("/nodes", json={"topic_id": -1, "content": "テスト"})
+    assert resp.status_code == 422
+
+
+def test_create_node_parent_id_zero(client):
+    resp = client.post("/nodes", json={"topic_id": 1, "parent_id": 0, "content": "テスト"})
+    assert resp.status_code == 422
+
+
+def test_create_node_ai_response_text_none(client):
+    """AI が response.text=None を返したとき（安全フィルター等）502 になること"""
+    with patch("db.get_topic", return_value=SAMPLE_TOPIC), \
+         patch("generator.generate_all_responses",
+               new_callable=AsyncMock,
+               side_effect=RuntimeError("claude: AI応答のテキストが空でした（安全フィルター等の可能性）")):
+        resp = client.post("/nodes", json={"topic_id": 1, "content": "テスト"})
+    assert resp.status_code == 502
+    assert "AI応答のテキストが空でした" not in resp.text  # 内部エラーが露出しないこと
 
 
 # ── models ────────────────────────────────────────────────────────────────────
