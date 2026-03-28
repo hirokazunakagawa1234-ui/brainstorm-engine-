@@ -307,3 +307,12 @@ services:
 - AI が `response.text=None` を返したとき502になり内部エラーが露出しないことを確認
 - テスト時に `RATELIMIT_ENABLED=false` を設定してレート制限を無効化
 - 計 27 件
+
+---
+
+## 追加改善（2026-03-28 第3弾）
+
+### バグ修正
+- `generator.py`: 全ペルソナの `max_output_tokens` を `2000〜2048` → `8192` に引き上げ
+  - `gemini-2.5-flash` は思考トークン（thinking tokens）が出力トークンとは別計上されるため、短い応答でも出力側の上限に達して文章が途中で切れる問題があった
+- `generator.py`: `finish_reason=MAX_TOKENS` 時にログ警告を出力（トークン上限到達の検知）

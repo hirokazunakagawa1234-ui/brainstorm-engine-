@@ -38,10 +38,11 @@ PERSONAS = {
 }
 
 # ペルソナごとの最大出力トークン数
+# gemini-2.5-flash は思考トークンが別計上されるため、出力トークンを余裕を持って設定
 MAX_TOKENS = {
-    "claude":  2000,
-    "chatgpt": 2048,
-    "chaos":   2048,
+    "claude":  8192,
+    "chatgpt": 8192,
+    "chaos":   8192,
 }
 
 
@@ -62,6 +63,12 @@ async def _call_one(persona: str, context: str, user_message: str):
     )
     if response.text is None:
         raise RuntimeError(f"{persona}: AI応答のテキストが空でした（安全フィルター等の可能性）")
+    candidate = response.candidates[0] if response.candidates else None
+    if candidate and candidate.finish_reason.name == "MAX_TOKENS":
+        import logging
+        logging.getLogger(__name__).warning(
+            "%s: finish_reason=MAX_TOKENS（トークン上限到達）", persona
+        )
     return persona, response.text
 
 
