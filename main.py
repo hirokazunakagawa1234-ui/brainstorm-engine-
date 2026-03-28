@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi.util import get_ipaddr
 from slowapi.errors import RateLimitExceeded
 
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ import generator
 from models import NodeCreate, TITLE_MAX_LEN
 
 _ratelimit_enabled = os.environ.get("RATELIMIT_ENABLED", "true").lower() == "true"
-limiter = Limiter(key_func=get_remote_address, enabled=_ratelimit_enabled)
+limiter = Limiter(key_func=get_ipaddr, enabled=_ratelimit_enabled)
 
 
 def _validate_env():

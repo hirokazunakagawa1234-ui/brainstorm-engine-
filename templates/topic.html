@@ -481,6 +481,7 @@
         });
 
         if (!res.ok) {
+          if (res.status === 429) throw new Error('投稿が多すぎます。しばらく待ってから再試行してください。');
           const body = await res.json().catch(() => ({}));
           throw new Error(body.detail || `エラー (HTTP ${res.status})`);
         }

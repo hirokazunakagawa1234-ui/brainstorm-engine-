@@ -1,8 +1,11 @@
 import os
 import asyncio
+import logging
 from typing import Optional
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -65,10 +68,7 @@ async def _call_one(persona: str, context: str, user_message: str):
         raise RuntimeError(f"{persona}: AI応答のテキストが空でした（安全フィルター等の可能性）")
     candidate = response.candidates[0] if response.candidates else None
     if candidate and candidate.finish_reason.name == "MAX_TOKENS":
-        import logging
-        logging.getLogger(__name__).warning(
-            "%s: finish_reason=MAX_TOKENS（トークン上限到達）", persona
-        )
+        logger.warning("%s: finish_reason=MAX_TOKENS（トークン上限到達）", persona)
     return persona, response.text
 
 

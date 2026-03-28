@@ -35,8 +35,6 @@ def test_index_returns_html_with_topics(client):
     assert "テスト議題" in resp.text
 
 
-# ── GET /topics ────────────────────────────────────────────────────────────────
-
 # ── GET /health ───────────────────────────────────────────────────────────────
 
 def test_health_ok(client):

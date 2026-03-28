@@ -310,6 +310,24 @@ services:
 
 ---
 
+## 追加改善（2026-03-28 第4弾）
+
+### バグ修正
+- `generator.py`: `import logging` を関数内から モジュールトップレベルに移動
+- `main.py`: レート制限キーを `get_remote_address` → `get_ipaddr` に変更（Render のリバースプロキシ経由でも `X-Forwarded-For` から実 IP を取得）
+
+### パフォーマンス
+- `db.py`: `topics.created_at DESC` にインデックスを追加（トップページの ORDER BY 高速化）
+
+### 保守性
+- `requirements-dev.txt`: `pytest==8.3.3` / `httpx==0.28.1` / `pytest-asyncio==0.24.0` をバージョンピン留め
+- `test_main.py`: 空のコメントセクション `# ── GET /topics` を削除
+
+### フロントエンド
+- `topic.html`: 429 レスポンス時に「投稿が多すぎます。しばらく待ってから再試行してください。」を日本語表示
+
+---
+
 ## 追加改善（2026-03-28 第3弾）
 
 ### バグ修正

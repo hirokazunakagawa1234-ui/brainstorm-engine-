@@ -72,6 +72,7 @@ def init_db():
                 );
                 CREATE INDEX IF NOT EXISTS idx_nodes_topic_id  ON nodes(topic_id);
                 CREATE INDEX IF NOT EXISTS idx_nodes_parent_id ON nodes(parent_id);
+                CREATE INDEX IF NOT EXISTS idx_topics_created_at ON topics(created_at DESC);
             """)
 
 
